@@ -1,0 +1,47 @@
+name: ${APP_NAME:?APP_NAME missing in the .env file.}
+
+networks:
+    web: { name: web, driver: bridge }
+    backend: { name: backend, driver: bridge }
+
+volumes:
+    pgdata: { }
+    letsencrypt: { }
+
+secrets:
+    app_key: { file: ../secrets/app_key.txt }
+    db_password: { file: ../secrets/db_password.txt }
+    mail_password: { file: ../secrets/mail_password.txt }
+    redis_password: { file: ../secrets/redis_password.txt }
+
+services:
+    postgres:
+        image: postgres:18-alpine
+        secrets:
+            - db_password
+        environment:
+            POSTGRES_DB: deployment
+            POSTGRES_USER: app
+            POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+        volumes:
+            - pgdata:/var/lib/postgresql/data
+        healthcheck:
+            test: [ "CMD-SHELL", "pg_isready -U app -d deployment -h 127.0.0.1" ]
+            interval: 5s
+            timeout: 3s
+            retries: 20
+        networks: [ "backend" ]
+
+    redis:
+        image: redis:8-alpine
+        secrets:
+            - redis_password
+        command:
+            - /bin/sh
+            - -lc
+            - >
+                exec redis-server
+                --save '' --appendonly no
+                --requirepass "$(tr -d '\r\n' < /run/secrets/redis_password)"
+        restart: unless-stopped
+        networks: [ "backend" ]

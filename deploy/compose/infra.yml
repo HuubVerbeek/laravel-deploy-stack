@@ -1,0 +1,53 @@
+services:
+  edge:
+    image: traefik:v3.5
+    command:
+      # --- Docker provider ---
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=web
+
+      # --- Entrypoints (HTTP and HTTPS) ---
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+
+      # --- Global HTTP → HTTPS redirection ---
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+
+      # --- Let's Encrypt configuration (ACME) ---
+      - --certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL missing in .env file.}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+
+      # --- Optional security hardening ---
+      - --serversTransport.insecureSkipVerify=false
+
+      # --- Dashboard (insecure, disable in production) ---
+      # - --api.insecure=true
+
+    ports:
+      - "80:80"
+      - "443:443"
+      # - "8080:8080" # dashboard port
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    restart: unless-stopped
+    networks: [ "web" ]
+  # Automated rolling updates (pulls new images and restarts one replica at a time)
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_LOGIN_CREDENTIALS_PATH:?DOCKER_LOGIN_CREDENTIALS_PATH missing in .env file.}:/config.json:ro
+    command: --label-enable
+      --cleanup
+      --rolling-restart
+      --interval 60
+    healthcheck:
+      test: [ "CMD-SHELL", "watchtower --health-check" ]
+      interval: 1m
+      timeout: 10s
+      retries: 3

@@ -1,0 +1,21 @@
+:80 {
+    root * /app/public
+
+    @canonicalPath {
+		file {path}/index.php
+		not path */
+	}
+	redir @canonicalPath {path}/ 308
+
+    @indexFiles file {
+		try_files {path} {path}/index.php index.php
+		split_path .php
+	}
+
+	rewrite @indexFiles {http.matchers.file.relative}
+
+	@phpFiles path *.php
+	php @phpFiles
+
+    file_server
+}

@@ -1,0 +1,60 @@
+services:
+  queue:
+    image: ${APP_IMAGE:?APP_IMAGE missing in the .env file.}
+    env_file: [ ../env/.env.app ]
+    secrets: [app_key, db_password, mail_password, redis_password]
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_KEY_FILE: /run/secrets/app_key
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      MAIL_PASSWORD_FILE: /run/secrets/mail_password
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+    command: >
+      /bin/sh -lc 'php artisan queue:work redis
+        --sleep=3 --tries=3 --backoff=5 --max-time=3600 --no-interaction'
+    restart: unless-stopped
+    stop_grace_period: 30s
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "php artisan about >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - com.centurylinkabs.watchtower.enable=true
+
+  scheduler:
+    image: ${APP_IMAGE:?APP_IMAGE missing in the .env file.}
+    env_file: [ ../env/.env.app ]
+    secrets: [app_key, db_password, mail_password, redis_password]
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_KEY_FILE: /run/secrets/app_key
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      MAIL_PASSWORD_FILE: /run/secrets/mail_password
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+    command: >
+      /bin/sh -lc 'php artisan schedule:work --no-interaction'
+    restart: unless-stopped
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "php artisan about >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - com.centurylinklabs.watchtower.enable=true

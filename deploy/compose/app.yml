@@ -1,0 +1,54 @@
+services:
+  app:
+    image: ${APP_IMAGE:?APP_IMAGE missing in the .env file.}
+    env_file: [ ../env/.env.app ]
+    secrets:
+      - app_key
+      - db_password
+      - mail_password
+      - redis_password
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      TRUSTED_PROXIES: "*"
+      APP_KEY_FILE: /run/secrets/app_key
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      MAIL_PASSWORD_FILE: /run/secrets/mail_password
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+    volumes:
+      - "../config/Caddyfile:/etc/frankenphp/Caddyfile:ro"
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+
+      # --- Main HTTPS router ---
+      - traefik.http.routers.app.rule=Host(`${APP_DOMAIN:?APP_DOMAIN missing in .env file.}`)
+      - traefik.http.routers.app.entrypoints=websecure
+      - traefik.http.routers.app.tls=true
+      - traefik.http.routers.app.tls.certresolver=letsencrypt
+      - traefik.http.routers.app.service=app
+
+      # --- Internal service definition ---
+      - traefik.http.services.app.loadbalancer.server.port=80
+
+      # --- Healthcheck for Traefik load balancer ---
+      - traefik.http.services.app.loadbalancer.healthcheck.path=/health
+      - traefik.http.services.app.loadbalancer.healthcheck.interval=3s
+      - traefik.http.services.app.loadbalancer.healthcheck.timeout=3s
+
+      # --- Watchtower ---
+      - com.centurylinklabs.watchtower.enable=true
+    tty: true
+    networks: [ "web", "backend" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost/health || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 2s
